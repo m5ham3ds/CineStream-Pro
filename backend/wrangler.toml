@@ -1,0 +1,17 @@
+name = "cinestream-trusted-backend"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# Observability and Logs
+[observability]
+enabled = true
+
+# Environment variables
+# NOT DEPLOYED. Cloudflare migration is not approved. Keep disabled until explicit approval.
+# Explicit user approval is required before setting BACKEND_ENABLED=true and supplying FIRESTORE_PROJECT_ID.
+[vars]
+ENVIRONMENT = "disabled"
+BACKEND_ENABLED = "false"
+MAX_POINT_BALANCE = 1000000
+AUDIT_LOG_COLLECTION = "auditLogs"
+IDEMPOTENCY_COLLECTION = "idempotency_records"

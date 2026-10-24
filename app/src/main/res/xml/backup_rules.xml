@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude sensitive database containing history, downloads, support, watched episodes -->
+    <exclude domain="database" path="cinestream_database" />
+    <exclude domain="database" path="cinestream_database-wal" />
+    <exclude domain="database" path="cinestream_database-shm" />
+    <!-- Exclude sensitive auth and deduplication tokens -->
+    <exclude domain="sharedpref" path="auth_session.xml" />
+    <exclude domain="sharedpref" path="fcm_notification_deduplicator.xml" />
+    <!-- Exclude P2P and security keys -->
+    <exclude domain="file" path="security/" />
+    <!-- Include user UI preferences only -->
+    <include domain="sharedpref" path="user_prefs.xml" />
+</full-backup-content>

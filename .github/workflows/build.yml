@@ -1,0 +1,65 @@
+name: Build Android App
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+
+      - name: Setup google-services.json
+        run: |
+          echo "ewogICJwcm9qZWN0X2luZm8iOiB7CiAgICAicHJvamVjdF9udW1iZXIiOiAiOTc5NDQ3MjU2NDE4IiwKICAgICJmaXJlYmFzZV91cmwiOiAiaHR0cHM6Ly9jaW5lc3RyZWFtLXN1bG8tZGVmYXVsdC1ydGRiLmZpcmViYXNlaW8uY29tIiwKICAgICJwcm9qZWN0X2lkIjogImNpbmVzdHJlYW0tc3VsbyIsCiAgICAic3RvcmFnZV9idWNrZXQiOiAiY2luZXN0cmVhbS1zdWxvLmZpcmViYXNlc3RvcmFnZS5hcHAiCiAgfSwKICAiY2xpZW50IjogWwogICAgewogICAgICAiY2xpZW50X2luZm8iOiB7CiAgICAgICAgIm1vYmlsZXNka19hcHBfaWQiOiAiMTo5Nzk0NDcyNTY0MTg6YW5kcm9pZDowMzdhOWIzYTEzOTNlNTUwYTk4ODNiIiwKICAgICAgICAiYW5kcm9pZF9jbGllbnRfaW5mbyI6IHsKICAgICAgICAgICJwYWNrYWdlX25hbWUiOiAiY29tLmFpc3R1ZGlvLmNpbmVzdHJlYW0ueHl6YWJjIgogICAgICAgIH0KICAgICAgfSwKICAgICAgIm9hdXRoX2NsaWVudCI6IFsKICAgICAgICB7CiAgICAgICAgICAiY2xpZW50X2lkIjogIjk3OTQ0NzI1NjQxOC05amw0Y2w5NGYyMmEyMjdzdHJ2aGozdXBzOThkcGthMC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsCiAgICAgICAgICAiY2xpZW50X3R5cGUiOiAxLAogICAgICAgICAgImFuZHJvaWRfaW5mbyI6IHsKICAgICAgICAgICAgInBhY2thZ2VfbmFtZSI6ICJjb20uYWlzdHVkaW8uY2luZXN0cmVhbS54eXphYmMiLAogICAgICAgICAgICAiY2VydGlmaWNhdGVfaGFzaCI6ICIxZTBmNGE0YTBlZTg0YjcwMjNlNTk1MDRiM2E5NzgzODJkMDE5ZTJhIgogICAgICAgICAgfQogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgImNsaWVudF9pZCI6ICI5Nzk0NDcyNTY0MTgtcmpiOWEwOTkxZ3Z2ZTAzMjhuMTEzZG1lNjdpNGdwdjIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLAogICAgICAgICAgImNsaWVudF90eXBlIjogMwogICAgICAgIH0KICAgICAgXSwKICAgICAgImFwaV9rZXkiOiBbCiAgICAgICAgewogICAgICAgICAgImN1cnJlbnRfa2V5IjogIkFJemFTeUM5Q3ZhTTlNdzNOaUQtS3NPaVl2SFpIajZYWkpRSm5QcyIKICAgICAgICB9CiAgICAgIF0sCiAgICAgICJzZXJ2aWNlcyI6IHsKICAgICAgICAiYXBwaW52aXRlX3NlcnZpY2UiOiB7CiAgICAgICAgICAib3RoZXJfcGxhdGZvcm1fb2F1dGhfY2xpZW50IjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgImNsaWVudF9pZCI6ICI5Nzk0NDcyNTY0MTgtcmpiOWEwOTkxZ3Z2ZTAzMjhuMTEzZG1lNjdpNGdwdjIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLAogICAgICAgICAgICAgICJjbGllbnRfdHlwZSI6IDMKICAgICAgICAgICAgfQogICAgICAgICAgXQogICAgICAgIH0KICAgICAgfQogICAgfSwKICAgIHsKICAgICAgImNsaWVudF9pbmZvIjogewogICAgICAgICJtb2JpbGVzZGtfYXBwX2lkIjogIjE6OTc5NDQ3MjU2NDE4OmFuZHJvaWQ6ZWE1YjU3MDI2NmFlMWFhNmE5ODgzYiIsCiAgICAgICAgImFuZHJvaWRfY2xpZW50X2luZm8iOiB7CiAgICAgICAgICAicGFja2FnZV9uYW1lIjogImNvbS5haXN0dWRpby5jaW5lc3RyZWFtYWRtaW4uYWRjeHoiCiAgICAgICAgfQogICAgICB9LAogICAgICAib2F1dGhfY2xpZW50IjogWwogICAgICAgIHsKICAgICAgICAgICJjbGllbnRfaWQiOiAiOTc5NDQ3MjU2NDE4LW03dTNiYXR2b3UwbW1ydWJma21zbm11bnZwZWRvMGRkLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwKICAgICAgICAgICJjbGllbnRfdHlwZSI6IDEsCiAgICAgICAgICAiYW5kcm9pZF9pbmZvIjogewogICAgICAgICAgICAicGFja2FnZV9uYW1lIjogImNvbS5haXN0dWRpby5jaW5lc3RyZWFtYWRtaW4uYWRjeHoiLAogICAgICAgICAgICAiY2VydGlmaWNhdGVfaGFzaCI6ICI1NGE4MTRmYjA0ZGViZDk4M2YzMzZlZjgyZTg3ODIwZWRiNzYwZjEyIgogICAgICAgICAgfQogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgImNsaWVudF9pZCI6ICI5Nzk0NDcyNTY0MTgtcmpiOWEwOTkxZ3Z2ZTAzMjhuMTEzZG1lNjdpNGdwdjIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLAogICAgICAgICAgImNsaWVudF90eXBlIjogMwogICAgICAgIH0KICAgICAgXSwKICAgICAgImFwaV9rZXkiOiBbCiAgICAgICAgewogICAgICAgICAgImN1cnJlbnRfa2V5IjogIkFJemFTeUM5Q3ZhTTlNdzNOaUQtS3NPaVl2SFpIajZYWkpRSm5QcyIKICAgICAgICB9CiAgICAgIF0sCiAgICAgICJzZXJ2aWNlcyI6IHsKICAgICAgICAiYXBwaW52aXRlX3NlcnZpY2UiOiB7CiAgICAgICAgICAib3RoZXJfcGxhdGZvcm1fb2F1dGhfY2xpZW50IjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgImNsaWVudF9pZCI6ICI5Nzk0NDcyNTY0MTgtcmpiOWEwOTkxZ3Z2ZTAzMjhuMTEzZG1lNjdpNGdwdjIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLAogICAgICAgICAgICAgICJjbGllbnRfdHlwZSI6IDMKICAgICAgICAgICAgfQogICAgICAgICAgXQogICAgICAgIH0KICAgICAgfQogICAgfQogIF0sCiAgImNvbmZpZ3VyYXRpb25fdmVyc2lvbiI6ICIxIgp9" | base64 -d > app/google-services.json
+
+      - name: Setup Keystore
+        run: |
+          echo "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" | base64 -d > debug.keystore
+      - name: Setup .env for Secrets Plugin
+        env:
+          WEB_CLIENT_ID: "979447256418-rjb9a0991gvve0328n113dme67i4gpv2.apps.googleusercontent.com"
+        run: |
+          cp .env.example .env
+          if [ -n "$WEB_CLIENT_ID" ]; then
+            sed -i "s|^WEB_CLIENT_ID=.*|WEB_CLIENT_ID=$WEB_CLIENT_ID|" .env
+          fi
+
+      - name: Build Debug APK
+        env:
+          WEB_CLIENT_ID: "979447256418-rjb9a0991gvve0328n113dme67i4gpv2.apps.googleusercontent.com"
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Rename APK
+        run: |
+          # Rename the generated APK to CineStream.apk
+          mv app/build/outputs/apk/debug/app-debug.apk CineStream.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineStream
+          path: CineStream.apk

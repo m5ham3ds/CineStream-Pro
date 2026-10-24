@@ -1,0 +1,916 @@
+// CINESTREAM — FIREBASE CONSOLE CLOUD FIRESTORE SECURITY RULES
+// Target Firebase project: cinestream-sulo (project number 979447256418).
+// This is ONE standalone ruleset intended for Firebase Console > Firestore Database > Rules.
+// It is not a pair of Android-project rule files, and it has not been deployed.
+// Source reconciliation: supplied Rules.md snapshot and PHASE 22.20–22.26 discussion/artifacts.
+// Comments feature remains cancelled: all /comments documents and descendants are explicitly denied.
+// Client-side point/subscription changes remain restricted; no Cloudflare backend is assumed deployed.
+// No tests, builds, emulator runs, or Firebase deployments were performed for this deliverable.
+// Review draft: do not interpret this header as proof of live-console state or runtime validation.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // CINESTREAM — PHASE 22.22-C PROVISIONAL RECONCILIATION CANDIDATE
+    // Prepared for Admin Dashboard & User App Reconciliation
+    // Firebase Project: cinestream-sulo
+    //
+    // Authority:
+    //   1. Owner bootstrap email: sulopros01@gmail.com (verified email required)
+    //   2. /admins/{uid}.enabled == true
+    //
+    // Status: PROVISIONAL CANDIDATE — NOT PUBLISHED TO PRODUCTION
+    // Retains strict security: owner-only /admins write, admin-only points ledger,
+    // audience-isolated notifications, cancelled comments denied.
+    // ============================================================
+
+    // ------------------------------------------------------------
+    // Helper Functions
+    // ------------------------------------------------------------
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Bootstrap owner identity: verified Firebase Auth email only.
+    // Before production deployment, replace this bootstrap with a verified immutable owner UID.
+    function isOwnerAccount() {
+      return isAuthenticated() &&
+        ('email' in request.auth.token) &&
+        request.auth.token.email != null &&
+        ('email_verified' in request.auth.token) &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email.matches('(?i)sulopros01@gmail.com');
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        isOwnerAccount() ||
+        (
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true
+        )
+      );
+    }
+
+    // Fields that normal users must never modify.
+    // Legacy user documents may not contain all modern restriction/subscription fields.
+    // Missing optional fields default to the documented non-restricted state; an explicit
+    // restrictive value still blocks the action.
+    function userMayUseChat(userId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return exists(userPath) &&
+        (!('canChat' in get(userPath).data) || get(userPath).data.canChat != false) &&
+        (!('chatBan' in get(userPath).data) || get(userPath).data.chatBan != true) &&
+        (!('isBanned' in get(userPath).data) || get(userPath).data.isBanned != true) &&
+        (!('isActive' in get(userPath).data) || get(userPath).data.isActive != false);
+    }
+
+    function userMayPostStory(userId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return exists(userPath) &&
+        (!('canStory' in get(userPath).data) || get(userPath).data.canStory != false) &&
+        (!('storyBan' in get(userPath).data) || get(userPath).data.storyBan != true) &&
+        (!('isBanned' in get(userPath).data) || get(userPath).data.isBanned != true) &&
+        (!('isActive' in get(userPath).data) || get(userPath).data.isActive != false);
+    }
+
+    function userIsEligibleForProNotifications(userId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+      return exists(userPath) && (
+        (('isPro' in get(userPath).data) && get(userPath).data.isPro == true) ||
+        (('isPremium' in get(userPath).data) && get(userPath).data.isPremium == true) ||
+        (('subscriptionTier' in get(userPath).data) && get(userPath).data.subscriptionTier in ['pro', 'PRO'])
+      );
+    }
+
+    function modifyingSensitiveUserFields() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'role',
+        'admin',
+        'isAdmin',
+        'createdAt',
+
+        // Legacy subscription fields
+        'isPremium',
+        'isPro',
+        'canComment', // Legacy compatibility field; comments remain globally disabled.
+        'proExpiresAt',
+        'proPlan',
+        'plan',
+
+        // Canonical subscription
+        'subscriptionTier',
+        'planId',
+        'durationDays',
+        'subscriptionStatus',
+        'subscriptionSource',
+        'subscriptionReferenceId',
+        'subscriptionStartedAt',
+        'subscriptionExpiresAt',
+
+        // Economy
+        'pointsBalance',
+        'totalPointsEarned',
+        'totalPointsSpent',
+        'pointsEarnedTotal',
+        'pointsSpentTotal',
+
+        // Account/admin controls
+        'isActive',
+        'isBanned',
+        'banReason',
+        'banExpiresAt',
+
+        // Feature restrictions
+        'canWatch',
+        'canDownload',
+        'canChat',
+        'canStory',
+        'canP2P',
+        'canUpload',
+        'canRequest',
+        'watchBan',
+        'downloadBan',
+        'chatBan',
+        'storyBan',
+        'p2pBan',
+
+        // Technical restrictions
+        'deviceLimit',
+        'maxDevices',
+        'allowedQuality',
+        'downloadLimit',
+        'offlineDaysOverride',
+        'forcedAdsOverride'
+      ]);
+    }
+
+    // A user may backfill missing identity mirrors with their own UID, but may not
+    // change an existing UID/ID or write another user's identity into this document.
+    function hasSafeUserIdentity(userId) {
+      return (!('uid' in request.resource.data) || request.resource.data.uid == userId) &&
+        (!('id' in request.resource.data) || request.resource.data.id == userId) &&
+        (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid) &&
+        (!('id' in resource.data) || request.resource.data.id == resource.data.id);
+    }
+
+    function hasSafeUserCreationDefaults(userId) {
+      let data = request.resource.data;
+
+      return isOwner(userId) &&
+        (!('uid' in data) || data.uid == userId) &&
+        (!('id' in data) || data.id == userId) &&
+        (!('role' in data) || data.role == 'user') &&
+        (!('admin' in data) || data.admin == false) &&
+        (!('isAdmin' in data) || data.isAdmin == false) &&
+
+        (!('isPremium' in data) || data.isPremium == false) &&
+        (!('subscriptionTier' in data) || data.subscriptionTier in ['free', 'FREE']) &&
+        (!('planId' in data) || data.planId in ['free', '']) &&
+        (!('durationDays' in data) || data.durationDays == 0 || data.durationDays == null) &&
+        // A normal client-created account cannot self-assign an active subscription.
+        (!('subscriptionStatus' in data) ||
+          data.subscriptionStatus in [
+            'none', 'NONE', 'inactive', 'INACTIVE', 'free', 'FREE', ''
+          ]) &&
+        (!('subscriptionSource' in data) ||
+          data.subscriptionSource in ['LEGACY', 'legacy', 'FREE', 'free', '']) &&
+        (!('subscriptionReferenceId' in data) || data.subscriptionReferenceId == null) &&
+        (!('subscriptionStartedAt' in data) || data.subscriptionStartedAt == null) &&
+        (!('subscriptionExpiresAt' in data) || data.subscriptionExpiresAt == null) &&
+
+        (!('isPro' in data) || data.isPro == false) &&
+        (!('proExpiresAt' in data) || data.proExpiresAt == null) &&
+        (!('proPlan' in data) || data.proPlan == null || data.proPlan == '') &&
+        (!('plan' in data) || data.plan in ['free', '', null]) &&
+
+        (!('pointsBalance' in data) || data.pointsBalance == 0) &&
+        (!('totalPointsEarned' in data) || data.totalPointsEarned == 0) &&
+        (!('totalPointsSpent' in data) || data.totalPointsSpent == 0) &&
+        (!('pointsEarnedTotal' in data) || data.pointsEarnedTotal == 0) &&
+        (!('pointsSpentTotal' in data) || data.pointsSpentTotal == 0) &&
+
+        (!('isActive' in data) || data.isActive == true) &&
+        (!('isBanned' in data) || data.isBanned == false) &&
+        (!('banReason' in data) || data.banReason == null || data.banReason == '') &&
+        (!('banExpiresAt' in data) || data.banExpiresAt == null) &&
+
+        (!('canWatch' in data) || data.canWatch == true) &&
+        (!('canDownload' in data) || data.canDownload == true) &&
+        (!('canChat' in data) || data.canChat == true) &&
+        (!('canStory' in data) || data.canStory == true) &&
+        (!('canP2P' in data) || data.canP2P == true) &&
+        (!('canComment' in data) || data.canComment == false) &&
+        (!('canUpload' in data) || data.canUpload == false || data.canUpload == true) &&
+        (!('canRequest' in data) || data.canRequest == true) &&
+
+        (!('watchBan' in data) || data.watchBan == false) &&
+        (!('downloadBan' in data) || data.downloadBan == false) &&
+        (!('chatBan' in data) || data.chatBan == false) &&
+        (!('storyBan' in data) || data.storyBan == false) &&
+        (!('p2pBan' in data) || data.p2pBan == false) &&
+
+        (!('deviceLimit' in data) || data.deviceLimit <= 2) &&
+        (!('maxDevices' in data) || data.maxDevices <= 2) &&
+        (!('allowedQuality' in data) || data.allowedQuality == null) &&
+        (!('downloadLimit' in data) || data.downloadLimit == null) &&
+        (!('offlineDaysOverride' in data) || data.offlineDaysOverride == null) &&
+        (!('forcedAdsOverride' in data) || data.forcedAdsOverride == null)
+      ;
+    }
+
+    // ============================================================
+    // ADMINS
+    // ============================================================
+
+    match /admins/{adminUid} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == adminUid);
+
+      // Only the verified owner account can grant/revoke admin authority.
+      // Enabled admins may read admin records but cannot promote others.
+      allow write: if isOwnerAccount();
+    }
+
+    // ============================================================
+    // PUBLIC PROFILE PROJECTION
+    // This is a deliberately limited, non-sensitive projection used for
+    // social discovery. Private account/subscription/economy fields stay in /users.
+    // ============================================================
+    match /public_profiles/{userId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && (
+          (('isProfilePublic' in resource.data) && resource.data.isProfilePublic == true) ||
+          request.auth.uid == userId
+        )
+      );
+
+      allow create: if isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'uid', 'username', 'firstName', 'lastName', 'photoUrl',
+          'isOnline', 'isProfilePublic', 'bio', 'updatedAt'
+        ]) &&
+        request.resource.data.isProfilePublic is bool &&
+        request.resource.data.isOnline is bool;
+
+      allow update: if isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.uid == userId &&
+        (!('uid' in resource.data) || resource.data.uid == userId) &&
+        request.resource.data.keys().hasOnly([
+          'uid', 'username', 'firstName', 'lastName', 'photoUrl',
+          'isOnline', 'isProfilePublic', 'bio', 'updatedAt'
+        ]) &&
+        // The client replaces the projection with a strict allowlisted map. Existing legacy
+        // fields may be removed; only additions or changed values are restricted to this list.
+        request.resource.data.diff(resource.data).addedKeys().hasOnly([
+          'uid', 'username', 'firstName', 'lastName', 'photoUrl',
+          'isOnline', 'isProfilePublic', 'bio', 'updatedAt'
+        ]) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'uid', 'username', 'firstName', 'lastName', 'photoUrl',
+          'isOnline', 'isProfilePublic', 'bio', 'updatedAt'
+        ]) &&
+        request.resource.data.isProfilePublic is bool &&
+        request.resource.data.isOnline is bool;
+
+      allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+    }
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
+    match /users/{userId} {
+
+      allow read: if isAdmin() || isOwner(userId);
+
+      allow create: if isAdmin() || hasSafeUserCreationDefaults(userId);
+
+      // SECURITY BOUNDARY:
+      // Ordinary users may update non-sensitive profile fields only.
+      // Roles, subscription entitlements, point balances, bans, and technical
+      // restrictions remain protected. Do not enable client-side economy writes here.
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        hasSafeUserIdentity(userId) &&
+        !modifyingSensitiveUserFields()
+      );
+
+      allow delete: if isAdmin();
+
+      // ----------------------------
+      // Point Transactions Ledger
+      // ----------------------------
+      match /point_transactions/{txId} {
+        allow read: if isAdmin() || isOwner(userId);
+
+        // Ledger records are append-only. Ordinary clients cannot author entries,
+        // and even administrators cannot rewrite or delete an existing ledger row.
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
+
+      // ----------------------------
+      // Task Claims
+      // ----------------------------
+      match /task_claims/{taskId} {
+        allow read: if isAdmin() || isOwner(userId);
+
+        // Claim rows are append-only in this client ruleset; client-authored
+        // reward claims still require Admin/trusted authority. No row mutation.
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
+
+      // ----------------------------
+      // User Library
+      // ----------------------------
+      match /library/{itemId} {
+        allow read, write: if isAdmin() || isOwner(userId);
+      }
+
+      // ----------------------------
+      // Watch History
+      // ----------------------------
+      match /history/{itemId} {
+        allow read, write: if isAdmin() || isOwner(userId);
+      }
+
+      // ----------------------------
+      // Watched Episodes
+      // ----------------------------
+      match /watched_episodes/{episodeId} {
+        allow read, write: if isAdmin() || isOwner(userId);
+      }
+
+      // ----------------------------
+      // Notification Settings
+      // ----------------------------
+      match /settings/notifications {
+        allow read: if isAdmin() || isOwner(userId);
+
+        function validNotificationPreferences(data) {
+          return data.keys().hasOnly([
+            'notificationsEnabled', 'announcementsEnabled', 'appUpdatesEnabled',
+            'maintenanceEnabled', 'newMoviesEnabled', 'newTvSeriesEnabled',
+            'newAnimeEnabled', 'newTvEpisodesEnabled', 'newAnimeEpisodesEnabled',
+            'newTvSeasonsEnabled', 'newAnimeSeasonsEnabled',
+            'enabled', 'announcements', 'appUpdates', 'maintenance', 'newMovies',
+            'newTvSeries', 'newAnime', 'newTvEpisodes', 'newAnimeEpisodes',
+            'newTvSeasons', 'newAnimeSeasons', 'updatedAt'
+          ]) &&
+          (!('notificationsEnabled' in data) || data.notificationsEnabled is bool) &&
+          (!('announcementsEnabled' in data) || data.announcementsEnabled is bool) &&
+          (!('appUpdatesEnabled' in data) || data.appUpdatesEnabled is bool) &&
+          (!('maintenanceEnabled' in data) || data.maintenanceEnabled is bool) &&
+          (!('newMoviesEnabled' in data) || data.newMoviesEnabled is bool) &&
+          (!('newTvSeriesEnabled' in data) || data.newTvSeriesEnabled is bool) &&
+          (!('newAnimeEnabled' in data) || data.newAnimeEnabled is bool) &&
+          (!('newTvEpisodesEnabled' in data) || data.newTvEpisodesEnabled is bool) &&
+          (!('newAnimeEpisodesEnabled' in data) || data.newAnimeEpisodesEnabled is bool) &&
+          (!('newTvSeasonsEnabled' in data) || data.newTvSeasonsEnabled is bool) &&
+          (!('newAnimeSeasonsEnabled' in data) || data.newAnimeSeasonsEnabled is bool) &&
+          (!('enabled' in data) || data.enabled is bool) &&
+          (!('announcements' in data) || data.announcements is bool) &&
+          (!('appUpdates' in data) || data.appUpdates is bool) &&
+          (!('maintenance' in data) || data.maintenance is bool) &&
+          (!('newMovies' in data) || data.newMovies is bool) &&
+          (!('newTvSeries' in data) || data.newTvSeries is bool) &&
+          (!('newAnime' in data) || data.newAnime is bool) &&
+          (!('newTvEpisodes' in data) || data.newTvEpisodes is bool) &&
+          (!('newAnimeEpisodes' in data) || data.newAnimeEpisodes is bool) &&
+          (!('newTvSeasons' in data) || data.newTvSeasons is bool) &&
+          (!('newAnimeSeasons' in data) || data.newAnimeSeasons is bool) &&
+          (!('updatedAt' in data) || data.updatedAt == request.time);
+        }
+
+        allow create: if isAdmin() || (isOwner(userId) && validNotificationPreferences(request.resource.data));
+        allow update: if isAdmin() || (
+          isOwner(userId) &&
+          validNotificationPreferences(request.resource.data) &&
+          request.resource.data.diff(resource.data).addedKeys().hasOnly([
+            'notificationsEnabled', 'announcementsEnabled', 'appUpdatesEnabled',
+            'maintenanceEnabled', 'newMoviesEnabled', 'newTvSeriesEnabled',
+            'newAnimeEnabled', 'newTvEpisodesEnabled', 'newAnimeEpisodesEnabled',
+            'newTvSeasonsEnabled', 'newAnimeSeasonsEnabled',
+            'enabled', 'announcements', 'appUpdates', 'maintenance', 'newMovies',
+            'newTvSeries', 'newAnime', 'newTvEpisodes', 'newAnimeEpisodes',
+            'newTvSeasons', 'newAnimeSeasons', 'updatedAt'
+          ]) &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'notificationsEnabled', 'announcementsEnabled', 'appUpdatesEnabled',
+            'maintenanceEnabled', 'newMoviesEnabled', 'newTvSeriesEnabled',
+            'newAnimeEnabled', 'newTvEpisodesEnabled', 'newAnimeEpisodesEnabled',
+            'newTvSeasonsEnabled', 'newAnimeSeasonsEnabled',
+            'enabled', 'announcements', 'appUpdates', 'maintenance', 'newMovies',
+            'newTvSeries', 'newAnime', 'newTvEpisodes', 'newAnimeEpisodes',
+            'newTvSeasons', 'newAnimeSeasons', 'updatedAt'
+          ])
+        );
+        allow delete: if isAdmin() || isOwner(userId);
+      }
+
+      // Do not use a recursive settings grant here: it would overlap
+      // /settings/notifications and OR around that document's field restrictions.
+      // Source review found only /settings/notifications in active client code.
+      match /settings/{settingId} {
+        allow read, write: if settingId != 'notifications' && (isAdmin() || isOwner(userId));
+      }
+
+      // ----------------------------
+      // FCM Device Tokens
+      // ----------------------------
+      match /fcmTokens/{installationId} {
+        allow read: if isAdmin() || isOwner(userId);
+
+        allow create: if (isAdmin() || isOwner(userId)) &&
+          request.resource.data.installationId == installationId &&
+          request.resource.data.token is string &&
+          request.resource.data.token.size() > 0 &&
+          request.resource.data.platform == 'android' &&
+          request.resource.data.deviceModel is string &&
+          request.resource.data.osVersion is string &&
+          request.resource.data.appVersion is string &&
+          request.resource.data.isActive == true &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.lastSeenAt == request.time &&
+          !request.resource.data.keys().hasAny([
+            'role',
+            'admin',
+            'isAdmin',
+            'isPremium',
+            'subscriptionTier',
+            'uid',
+            'userId'
+          ]);
+
+        allow update: if isAdmin() || (
+          isOwner(userId) &&
+          request.resource.data.installationId == resource.data.installationId &&
+          request.resource.data.installationId == installationId &&
+          request.resource.data.platform == resource.data.platform &&
+          request.resource.data.platform == 'android' &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.lastSeenAt == request.time &&
+          request.resource.data.token is string &&
+          request.resource.data.token.size() > 0 &&
+          request.resource.data.deviceModel is string &&
+          request.resource.data.osVersion is string &&
+          request.resource.data.appVersion is string &&
+          request.resource.data.isActive is bool &&
+          (!('deactivationReason' in request.resource.data) ||
+            request.resource.data.deactivationReason is string) &&
+          !request.resource.data.keys().hasAny([
+            'role',
+            'admin',
+            'isAdmin',
+            'isPremium',
+            'subscriptionTier',
+            'uid',
+            'userId'
+          ])
+        );
+
+        allow delete: if isAdmin() || isOwner(userId);
+      }
+    }
+
+    // ============================================================
+    // CONFIGURATION
+    // ============================================================
+
+    match /config/app {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Canonical global extension search order.
+    // Authenticated read is the deployed Phase 05J contract.
+    match /config/search_order {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /config/features {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /config/economy {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Deprecated /config paths are denied.
+    // In particular, /config/global is NOT resurrected.
+    match /config/{document=**} {
+      allow read, write: if false;
+    }
+
+    // ============================================================
+    // MANAGED EXTENSIONS
+    // ============================================================
+
+    // Canonical catalog.
+    // Users App and Admin App authenticate before reading.
+    match /managed_extensions/{extensionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+
+      match /{subcollection}/{docId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
+    }
+
+    // Legacy catalog retained for migration compatibility.
+    // Canonical /managed_extensions always takes precedence in application code.
+    match /extensions/{extensionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /extension_updates/{updateId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // APP UPDATES
+    // ============================================================
+
+    match /app_updates/{updateId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // NOTIFICATIONS
+    // ============================================================
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && (
+          (('target' in resource.data) && resource.data.target == 'all') ||
+          (('target' in resource.data) && resource.data.target == 'user' &&
+            ('targetUid' in resource.data) && resource.data.targetUid == request.auth.uid) ||
+          (('target' in resource.data) && resource.data.target == 'pro' &&
+            userIsEligibleForProNotifications(request.auth.uid))
+        )
+      );
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // REWARD TASKS
+    // ============================================================
+
+    match /reward_tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // LEADERBOARD
+    // ============================================================
+
+    match /leaderboard/weekly_current {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /leaderboard_history/{cycleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // SUBSCRIPTION REQUESTS
+    // ============================================================
+
+    match /pro_requests/{requestId} {
+      allow read: if isAdmin() ||
+        (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+      allow create: if isAdmin() || (
+        isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        (
+          !('status' in request.resource.data) ||
+          request.resource.data.status == 'PENDING' ||
+          request.resource.data.status == 'pending'
+        ) &&
+        (!('reviewedBy' in request.resource.data) ||
+          request.resource.data.reviewedBy == '' ||
+          request.resource.data.reviewedBy == null) &&
+        (!('reviewedAt' in request.resource.data) ||
+          request.resource.data.reviewedAt == null) &&
+        (!('rejectionReason' in request.resource.data) ||
+          request.resource.data.rejectionReason == '' ||
+          request.resource.data.rejectionReason == null) &&
+        !request.resource.data.keys().hasAny([
+          'approvedBy',
+          'approvedAt',
+          'grantedBy',
+          'grantSource',
+          'subscriptionTier',
+          'subscriptionStatus',
+          'subscriptionSource',
+          'subscriptionReferenceId',
+          'subscriptionStartedAt',
+          'subscriptionExpiresAt',
+          'isPremium',
+          'isPro',
+          'proPlan',
+          'proExpiresAt',
+          'admin',
+          'isAdmin',
+          'role'
+        ])
+      );
+
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid &&
+        (resource.data.status == 'PENDING' || resource.data.status == 'pending') &&
+        request.resource.data.status == 'CANCELLED' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'cancelledAt'])
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ============================================================
+    // REPORTS
+    // ============================================================
+
+    match /reports/{reportId} {
+      allow read: if isAdmin() ||
+        (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+      allow create: if isAdmin() || (
+        isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        (
+          request.resource.data.status == 'PENDING' ||
+          request.resource.data.status == 'pending'
+        ) &&
+        (!('resolvedBy' in request.resource.data) ||
+          request.resource.data.resolvedBy == '' ||
+          request.resource.data.resolvedBy == null) &&
+        (!('resolvedAt' in request.resource.data) ||
+          request.resource.data.resolvedAt == null) &&
+        (!('resolutionNotes' in request.resource.data) ||
+          request.resource.data.resolutionNotes == '' ||
+          request.resource.data.resolutionNotes == null)
+      );
+
+      allow update, delete: if isAdmin();
+    }
+
+    // ============================================================
+    // SUPPORT
+    // ============================================================
+
+    match /support_conversations/{conversationId} {
+      allow read: if isAdmin() ||
+        (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+      allow create: if isAdmin() || (
+        isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        (
+          request.resource.data.status in ['open', 'pending', 'OPEN', 'PENDING']
+        )
+      );
+
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage', 'lastMessageTime', 'updatedAt'
+        ]) &&
+        (!('createdAt' in request.resource.data) ||
+          request.resource.data.createdAt == resource.data.createdAt) &&
+        (!('status' in request.resource.data) ||
+          request.resource.data.status == resource.data.status)
+      );
+
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAdmin() || (
+          isAuthenticated() &&
+          get(/databases/$(database)/documents/support_conversations/$(conversationId))
+            .data.userId == request.auth.uid
+        );
+
+        allow create: if isAuthenticated() && (
+          isAdmin() ||
+          (
+            get(/databases/$(database)/documents/support_conversations/$(conversationId))
+              .data.userId == request.auth.uid &&
+            request.resource.data.senderId == request.auth.uid &&
+            request.resource.data.senderRole == 'user'
+          )
+        );
+
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // ============================================================
+    // SOCIAL CONVERSATIONS
+    // ============================================================
+
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          resource != null &&
+          'participants' in resource.data &&
+          request.auth.uid in resource.data.participants
+        ) ||
+        (
+          resource != null &&
+          'userId' in resource.data &&
+          resource.data.userId == request.auth.uid
+        )
+      );
+
+      allow create: if isAuthenticated() &&
+        (
+          (
+            'participants' in request.resource.data &&
+            request.resource.data.participants is list &&
+            request.resource.data.participants.size() == 2 &&
+            request.resource.data.participants[0] != request.resource.data.participants[1] &&
+            request.auth.uid in request.resource.data.participants
+          ) ||
+          (
+            !('participants' in request.resource.data) &&
+            'userId' in request.resource.data &&
+            request.resource.data.userId == request.auth.uid
+          )
+        ) &&
+        userMayUseChat(request.auth.uid);
+
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        resource != null &&
+        (
+          (('participants' in resource.data) && request.auth.uid in resource.data.participants) ||
+          (('userId' in resource.data) && resource.data.userId == request.auth.uid)
+        ) &&
+        // unreadCounts is intentionally not client-writable: a participant
+        // could otherwise alter the other participant's counter. Move unread
+        // counter mutations to trusted code or per-user documents first.
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage', 'lastMessageTime', 'updatedAt'
+        ]) &&
+        request.resource.data.participants == resource.data.participants &&
+        (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId) &&
+        (!('ownerId' in resource.data) || request.resource.data.ownerId == resource.data.ownerId)
+      );
+
+      allow delete: if isAdmin() || (
+        isAuthenticated() &&
+        resource != null &&
+        (
+          (
+            'userId' in resource.data &&
+            resource.data.userId == request.auth.uid
+          ) ||
+          (
+            'ownerId' in resource.data &&
+            resource.data.ownerId == request.auth.uid
+          )
+        )
+      );
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(conversationId))
+              .data.participants
+        );
+
+        allow create: if isAuthenticated() &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(conversationId))
+              .data.participants &&
+          userMayUseChat(request.auth.uid);
+
+        allow update: if isAdmin() || (
+          isAuthenticated() && resource != null &&
+          request.resource.data.senderId == resource.data.senderId &&
+          (
+            (resource.data.senderId == request.auth.uid &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'text', 'isEdited', 'isDeleted', 'reactions', 'deletedFor'
+              ])) ||
+            (request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'deletedFor']))
+          )
+        );
+
+        allow delete: if isAdmin() || (
+          isAuthenticated() && resource != null &&
+          resource.data.senderId == request.auth.uid
+        );
+      }
+
+      match /readReceipts/{uid} {
+        allow read: if isAdmin() || (
+          isAuthenticated() &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+        );
+
+        allow create, update: if isAuthenticated() && request.auth.uid == uid &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants &&
+          request.resource.data.keys().hasOnly(['uid', 'lastReadAt', 'updatedAt']) &&
+          request.resource.data.uid == uid &&
+          request.resource.data.lastReadAt is int &&
+          request.resource.data.updatedAt == request.time;
+
+        allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+      }
+    }
+
+    // ============================================================
+    // STORIES
+    // ============================================================
+
+    match /stories/{storyId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        userMayPostStory(request.auth.uid);
+
+      allow update: if isAdmin() ||
+        (
+          isAuthenticated() &&
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['imageUrl', 'timestamp'])
+        );
+
+      allow delete: if isAdmin() ||
+        (
+          isAuthenticated() &&
+          resource.data.userId == request.auth.uid
+        );
+    }
+
+    // ============================================================
+    // AUDIT LOGS
+    // ============================================================
+
+    match /auditLogs/{logId} {
+      // Audit records are append-only; no client may rewrite or erase history.
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Deprecated path is explicitly denied.
+    match /audit_logs/{document=**} {
+      allow read, write: if false;
+    }
+
+    // ============================================================
+    // CANCELLED COMMENTS FEATURE — EXPLICIT DENY
+    // No comments feature is active in either app. Do not add a grant here.
+    // The recursive wildcard covers /comments documents and descendants.
+    // ============================================================
+
+    match /comments/{document=**} {
+      allow read, write: if false;
+    }
+
+    // ============================================================
+    // FINAL DEFAULT DENY
+    // ============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

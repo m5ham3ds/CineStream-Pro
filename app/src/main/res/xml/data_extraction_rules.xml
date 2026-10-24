@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Exclude sensitive database containing history, downloads, support, watched episodes -->
+        <exclude domain="database" path="cinestream_database" />
+        <exclude domain="database" path="cinestream_database-wal" />
+        <exclude domain="database" path="cinestream_database-shm" />
+        <!-- Exclude sensitive credentials and tokens -->
+        <exclude domain="sharedpref" path="auth_session.xml" />
+        <exclude domain="sharedpref" path="fcm_notification_deduplicator.xml" />
+        <exclude domain="file" path="security/" />
+        <!-- Allow non-sensitive user UI preferences -->
+        <include domain="sharedpref" path="user_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- Exclude auth tokens, sessions, and internal write-ahead logs during device migration -->
+        <exclude domain="sharedpref" path="auth_session.xml" />
+        <exclude domain="database" path="cinestream_database-wal" />
+        <exclude domain="database" path="cinestream_database-shm" />
+        <exclude domain="file" path="security/" />
+    </device-transfer>
+</data-extraction-rules>

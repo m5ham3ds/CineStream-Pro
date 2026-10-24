@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Canonical identity lock for the two separate CineStream Android apps; documents expected values and is not a replacement for Firebase Console configuration.",
+  "firebase": {
+    "projectId": "cinestream-sulo",
+    "projectNumber": "979447256418",
+    "storageBucket": "cinestream-sulo.firebasestorage.app",
+    "webOauthClientId": "979447256418-rjb9a0991gvve0328n113dme67i4gpv2.apps.googleusercontent.com",
+    "googleServicesJsonSha256": "9bdb880b9e47424f8ce833de7631967ff3b37c84795b6d3075e7faa8e390d895"
+  },
+  "android": {
+    "namespace": "com.example",
+    "debugKeystoreAlias": "androiddebugkey",
+    "debugKeystorePassword": "android"
+  },
+  "applications": {
+    "user": {
+      "applicationId": "com.aistudio.cinestream.xyzabc",
+      "firebaseAppId": "1:979447256418:android:037a9b3a1393e550a9883b",
+      "androidOauthClientId": "979447256418-9jl4cl94f22a227strvhj3ups98dpka0.apps.googleusercontent.com",
+      "debugSha1": "1e0f4a4a0ee84b7023e59504b3a978382d019e2a",
+      "debugSha256": "c3aed0b9552cbb730057309495a379e1e8cc73eefabc4deacc39616fc12d27d3"
+    },
+    "admin": {
+      "applicationId": "com.aistudio.cinestreamadmin.adcxz",
+      "firebaseAppId": "1:979447256418:android:ea5b570266ae1aa6a9883b",
+      "androidOauthClientId": "979447256418-m7u3batvou0mmrubfkmsnmunvpedo0dd.apps.googleusercontent.com",
+      "debugSha1": "54a814fb04debd983f336ef82e87820edb760f12",
+      "debugSha256": "1f32aed31251da8aafb8bc5fe9fb07c491d798771ca0a347e34e2147100e4164"
+    }
+  },
+  "releaseSigning": "Not fingerprint-locked by this file; release signing depends on the separately configured release keystore/environment variables."
+}

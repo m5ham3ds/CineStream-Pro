@@ -1,0 +1,14 @@
+{
+  "name": "cinestream-trusted-backend",
+  "version": "1.0.0",
+  "description": "CineStream Trusted Economic Backend (Cloudflare Worker)",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "wrangler deploy --dry-run",
+    "test": "node --test test/backend_suite.test.js"
+  },
+  "keywords": ["cinestream", "cloudflare", "worker", "economy", "points"],
+  "author": "CineStream Architecture Team",
+  "license": "UNLICENSED",
+  "private": true
+}

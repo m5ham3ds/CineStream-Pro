@@ -1,0 +1,85 @@
+{
+  "project_info": {
+    "project_number": "979447256418",
+    "firebase_url": "https://cinestream-sulo-default-rtdb.firebaseio.com",
+    "project_id": "cinestream-sulo",
+    "storage_bucket": "cinestream-sulo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:979447256418:android:037a9b3a1393e550a9883b",
+        "android_client_info": {
+          "package_name": "com.aistudio.cinestream.xyzabc"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "979447256418-9jl4cl94f22a227strvhj3ups98dpka0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.cinestream.xyzabc",
+            "certificate_hash": "1e0f4a4a0ee84b7023e59504b3a978382d019e2a"
+          }
+        },
+        {
+          "client_id": "979447256418-rjb9a0991gvve0328n113dme67i4gpv2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9CvaM9Mw3NiD-KsOiYvHZHj6XZJQJnPs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "979447256418-rjb9a0991gvve0328n113dme67i4gpv2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:979447256418:android:ea5b570266ae1aa6a9883b",
+        "android_client_info": {
+          "package_name": "com.aistudio.cinestreamadmin.adcxz"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "979447256418-m7u3batvou0mmrubfkmsnmunvpedo0dd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.cinestreamadmin.adcxz",
+            "certificate_hash": "54a814fb04debd983f336ef82e87820edb760f12"
+          }
+        },
+        {
+          "client_id": "979447256418-rjb9a0991gvve0328n113dme67i4gpv2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9CvaM9Mw3NiD-KsOiYvHZHj6XZJQJnPs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "979447256418-rjb9a0991gvve0328n113dme67i4gpv2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
